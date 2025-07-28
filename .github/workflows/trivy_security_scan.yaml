@@ -1,4 +1,5 @@
-name: Trivy Security Scan
+# .github/workflows/trivy_security_scan.yaml
+name: Trivy Security Scan (Public Image Test)
 
 on:
   push:
@@ -16,28 +17,22 @@ jobs:
       security-events: write # Necesario para subir resultados SARIF
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # OMITIMOS el paso de Log in to Docker Hub
 
-      - name: Log in to Docker Hub (Optional: if you push this image or pull private bases)
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      # OMITIMOS el paso de Build My CLI/Plugin Image for Scan
+      # En su lugar, usaremos una imagen pública conocida
 
-      - name: Build My CLI/Plugin Image for Scan
-        run: docker build -t my-cli-image:latest -f Dockerfile .
-
-      - name: Run Trivy vulnerability scan on Image
+      - name: Run Trivy vulnerability scan on Public Image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'my-cli-image:latest'
+          # Escanea una imagen de Docker Hub pública (ej. nginx)
+          image-ref: 'nginx:latest' # <--- CAMBIADO AQUÍ: Usamos una imagen pública
           format: 'sarif'
           output: 'trivy-report.sarif'
-          exit-code: '1'
+          exit-code: '1' # Falla si se encuentran vulnerabilidades CRITICAL/HIGH
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
