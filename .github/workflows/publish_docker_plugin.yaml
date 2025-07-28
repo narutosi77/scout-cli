@@ -44,8 +44,8 @@ jobs:
         id: trivy_scan
         uses: aquasecurity/trivy-action@master
         with:
-          # 'image' es el parámetro correcto, no 'image-ref'.
-          image: 'my-cli-image:latest' # Escanea la imagen que acabas de construir.
+          # 'image-ref' es el parámetro correcto para la acción trivy-action.
+          image-ref: 'my-cli-image:latest' # Escanea la imagen que acabas de construir.
           format: 'sarif'
           output: 'trivy-report.sarif'
           # exit-code: '1' # Descomenta si quieres que el workflow falle en caso de vulnerabilidades críticas/altas
