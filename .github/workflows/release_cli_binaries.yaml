@@ -1,17 +1,22 @@
-name: Build CLI Binaries
+# .github/workflows/release_cli_binaries.yaml
+name: Build and Package CLI Binaries
 
 on:
-  workflow_call: # Este workflow está diseñado para ser llamado por otros workflows
-    # No necesita inputs si el tag se maneja en el workflow que lo llama.
-    # Si necesitara el tag para algo específico de la compilación, se podría añadir:
-    # inputs:
-    #   tag:
-    #     required: true
-    #     type: string
+  workflow_call: # Este workflow es llamado por 'release.yaml'
+    inputs:
+      tag:
+        required: true
+        type: string
+        description: "The release tag (e.g., v1.0.0)"
 
 jobs:
-  build:
+  build-binaries:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Necesario para subir artefactos y para Checkout
+      id-token: write # Necesario para Cosign OIDC
+      # security-events: write # Si Trivy reportará a la pestaña de seguridad
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,28 +24,73 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # Asegúrate de que esta versión coincida con la de tu proyecto Go
+          go-version: '1.22' # O la versión de Go que uses
 
-      - name: Create dist directory for binaries
-        run: mkdir -p dist # Crea la carpeta 'dist' donde se guardarán los binarios
+      - name: Create dist directory
+        run: mkdir -p dist
 
       - name: Build for Linux (AMD64)
-        # Ajusta './cmd/scout' si tu main.go está en otra ubicación (ej. '.')
-        run: GOOS=linux GOARCH=amd64 go build -o dist/docker-scout-linux-amd64 ./cmd/scout
-    
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./dist/scout-cli-linux-amd64 . # Asegúrate de que '.' es la ruta a tu código Go
+        working-directory: . # Si tu main.go no está en la raíz, ajusta aquí
+
       - name: Build for Windows (AMD64)
-        run: GOOS=windows GOARCH=amd64 go build -o dist/docker-scout-windows-amd64.exe ./cmd/scout
-    
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./dist/scout-cli-windows-amd64.exe .
+        working-directory: .
+
       - name: Build for macOS (AMD64)
-        run: GOOS=darwin GOARCH=amd64 go build -o dist/docker-scout-darwin-amd64 ./cmd/scout
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./dist/scout-cli-darwin-amd64 .
+        working-directory: .
 
-      - name: Build for macOS (ARM64)
-        run: GOOS=darwin GOARCH=arm64 go build -o dist/docker-scout-darwin-arm64 ./cmd/scout
+      # --- Pasos para Automatización de Seguridad y Cumplimiento (Trivy y Cosign) ---
 
-      - name: Upload CLI Binaries as Artifact
-        # Sube los binarios compilados como un artefacto.
-        # Este artefacto será descargado por el workflow 'release.yaml'.
+      - name: Install Trivy
+        run: |
+          wget https://github.com/aquasecurity/trivy/releases/download/v0.52.0/trivy_0.52.0_Linux-64bit.deb -O trivy.deb
+          sudo dpkg -i trivy.deb
+          rm trivy.deb
+          trivy version
+
+      - name: Run Trivy scan on Linux Binary
+        run: trivy fs --format sarif --output ./dist/scout-cli-linux-amd64.sarif --severity CRITICAL,HIGH ./dist/scout-cli-linux-amd64 || true
+        continue-on-error: true # Permite que el workflow continúe incluso si se encuentran vulnerabilidades
+
+      - name: Upload Linux Binary Scan results to GitHub Security tab
+        if: always() # Subir siempre el informe SARIF, incluso si el escaneo encontró cosas
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./dist/scout-cli-linux-amd64.sarif
+          category: "cli-binary-scan-linux"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0 # Usar la versión más reciente y estable
+        with:
+          cosign-release: 'v2.2.4' # Especifica una versión para estabilidad
+
+      - name: Configure Cosign for OIDC (Recommended)
+        # Esto configura el entorno para usar OIDC. No necesitas secretos si GitHub es el emisor.
+        # Asegúrate de que el repositorio esté configurado para OIDC en Settings -> Actions -> General -> Workflow permissions
+        # (sección "Access to ID Token").
+        run: |
+          echo "COSIGN_EXPERIMENTAL=true" >> $GITHUB_ENV # Habilita funciones experimentales si es necesario
+          # No se requiere un paso explícito de "login" si se usa OIDC de GH Actions.
+          # Cosign automáticamente usará el token de ID de GH Actions.
+
+      - name: Sign Linux Binary with Cosign
+        run: cosign sign-blob --output-signature ./dist/scout-cli-linux-amd64.sig --output-attestation ./dist/scout-cli-linux-amd64.attestation ./dist/scout-cli-linux-amd64
+        # Asegúrate de que COSIGN_EXPERIMENTAL esté seteado si es necesario para tus firmas
+
+      - name: Sign Windows Binary with Cosign
+        run: cosign sign-blob --output-signature ./dist/scout-cli-windows-amd64.exe.sig --output-attestation ./dist/scout-cli-windows-amd64.exe.attestation ./dist/scout-cli-windows-amd64.exe
+        # Asegúrate de que COSIGN_EXPERIMENTAL esté seteado si es necesario para tus firmas
+
+      - name: Sign macOS Binary with Cosign
+        run: cosign sign-blob --output-signature ./dist/scout-cli-darwin-amd64.sig --output-attestation ./dist/scout-cli-darwin-amd64.attestation ./dist/scout-cli-darwin-amd64
+        # Asegúrate de que COSIGN_EXPERIMENTAL esté seteado si es necesario para tus firmas
+
+      # --- Fin de Pasos de Seguridad ---
+
+      - name: Upload compiled binaries and signatures as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cli-binaries # Este nombre debe coincidir con el nombre de descarga en 'release.yaml'
-          path: dist/ # La carpeta 'dist/' que contiene todos los binarios compilados
+          name: cli-binaries-${{ inputs.tag }} # Nombre del artefacto para el Release
+          path: ./dist/ # La carpeta 'dist' que contiene binarios, SARIF y archivos de firma

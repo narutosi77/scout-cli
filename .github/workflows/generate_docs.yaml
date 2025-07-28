@@ -1,45 +1,46 @@
-name: Generate and Deploy Docs
+# .github/workflows/generate_docs.yaml
+name: Build and Deploy Docs
 
 on:
   push:
     branches:
-      - main
-  workflow_dispatch:
+      - main # Desplegar cuando se haga push a la rama principal
+  workflow_dispatch: # Permite ejecutar el workflow manualmente desde la UI de GitHub
 
 jobs:
   build-and-deploy-docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Necesario para que actions/checkout y peaceiris/actions-gh-pages escriban en el repo
+      pages: write # Permiso necesario para desplegar en GitHub Pages
+      id-token: write # Permiso para autenticación OIDC, requerido por actions/deploy-pages
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Build Docker Image for Docs Generator
+        run: docker build -t scout-docs-generator -f Dockerfile.docs .
+        # Asegúrate de que Dockerfile.docs está en la raíz del repositorio
 
-      - name: Build Docker Image for Docs Generation
-        # Construye la imagen usando el Dockerfile.docs (el específico para generar documentación)
-        run: docker build -t docs-generator-image:latest -f Dockerfile.docs .
-      
-      - name: Run Docs Generation in Container and Extract
-        # Ejecuta un contenedor temporal de la imagen de docs, copia los docs generados, y lo elimina.
-        # Se asume que generate_docs.py dentro del contenedor guarda en /app/docs_output_path
-        run: |
-          CONTAINER_ID=$(docker create docs-generator-image:latest)
-          docker cp $CONTAINER_ID:/app/docs_output_path ./generated_docs_from_container
-          docker rm $CONTAINER_ID
-        # Ahora los documentos generados están en la carpeta ./generated_docs_from_container del runner de GitHub Actions.
+      - name: Create temporary container to extract docs
+        run: docker create --name docs_container scout-docs-generator
 
-      - name: Upload generated docs as artifact
-        uses: actions/upload-artifact@v4
+      - name: Copy generated docs from container
+        # MkDocs genera el sitio en la carpeta 'site' dentro del WORKDIR del contenedor
+        run: docker cp docs_container:/app/site/. docs_output # Copia los docs a una carpeta local 'docs_output'
+
+      - name: Remove temporary container
+        run: docker rm docs_container
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5 # Configura el entorno de GitHub Pages
+
+      - name: Upload artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3 # Sube los archivos para el despliegue de Pages
         with:
-          name: generated-docs
-          path: generated_docs_from_container # Ruta donde se extrajeron los docs en el runner
+          path: './docs_output' # La carpeta que contiene los archivos estáticos HTML
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' # Solo despliega desde la rama principal
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./generated_docs_from_container # Misma ruta que para el artifact
-          # Si deseas una rama específica para GH Pages (ej. 'gh-pages'), descomenta la siguiente línea y configúrala en Settings > Pages:
-          # publish_branch: gh-pages
+        id: deployment
+        uses: actions/deploy-pages@v4 # Despliega los archivos en GitHub Pages

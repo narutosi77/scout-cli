@@ -1,0 +1,40 @@
+# C:\Users\cever\Documents\scout-cli\mkdocs.yml
+site_name: Docker Scout CLI Documentation
+site_url: https://narutosi77.github.io/scout-cli/ # Asegúrate de que esta URL sea correcta para tus GitHub Pages
+repo_url: https://github.com/narutosi77/scout-cli
+repo_name: narutosi77/scout-cli
+edit_uri: blob/main/docs/ # Permite editar los archivos directamente desde GitHub Pages
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  language: es # Idioma de la interfaz del tema
+  palette:
+    # Modo claro
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Cambiar a modo oscuro
+    # Modo oscuro
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Cambiar a modo claro
+
+nav:
+  - Home: index.md
+  - Comandos:
+    - Escanear Vulnerabilidades: comandos/scout_cves.md
+    - Comparar Imágenes: comandos/scout_compare.md
+    - Análisis Rápido: comandos/scout_quickview.md
+
+plugins:
+  - search # Habilita la búsqueda

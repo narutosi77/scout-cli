@@ -1,33 +1,73 @@
-name: Publish Docker Plugin
+# .github/workflows/publish_docker_plugin.yaml
+name: Publish Docker Plugin Image
 
 on:
-  release:
-    types: [published] # Se ejecuta cuando se publica un release en GitHub
+  push:
+    branches:
+      - main # Publicar en Docker Hub con cada push a main (puedes cambiar a tags 'v*')
   workflow_dispatch: # Permite ejecutar manualmente
 
 jobs:
-  build_and_publish:
+  build-and-publish:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    permissions:
+      contents: read # Necesario para checkout
+      packages: write # Necesario si vas a empujar a GitHub Container Registry (ghcr.io)
+      security-events: write # Necesario para subir resultados SARIF
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+          # ¡IMPORTANTE! Asegúrate de que DOCKER_USERNAME y DOCKER_PASSWORD estén configurados correctamente
+          # en tus secretos del repositorio de GitHub y que tengan permisos de push.
+
+      # --- Paso de compilación del binario del plugin (si es un binario Go) ---
+      # Si tu plugin es un ejecutable Go, necesitas compilarlo antes de construir la imagen Docker.
+      # Si tu plugin es solo un script o algo que ya está en la imagen base, puedes omitir esto.
+      - name: Set up Go (for plugin binary)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # O la versión de Go que uses para tu plugin
+
+      - name: Build Plugin Binary (Linux AMD64)
+        # Asume que el código fuente de tu plugin está en 'plugin/src/main.go' o similar.
+        # Ajusta la ruta y el nombre del binario según tu proyecto.
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./plugin/scout-plugin-binary ./plugin/src/main.go # Ajusta la ruta a tu fuente Go
+        #working-directory: ./plugin # Si todo el código del plugin está en esta carpeta
+
+      # --- Fin de compilación de binario del plugin ---
 
       - name: Build Docker Plugin Image
-        # Construye la imagen de TU plugin con el Dockerfile principal
-        # Etiqueta la imagen con tu username de Docker Hub y el nombre del plugin
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/your-plugin-image-name:latest -f Dockerfile .
-        # *** IMPORTANTE: Reemplaza 'your-plugin-image-name' con el nombre real de tu imagen de plugin. ***
+        # Ajusta el nombre de la imagen y la ruta del Dockerfile si es necesario
+        # Asumo que el Dockerfile del plugin y el binario compilado están en la carpeta 'plugin/'
+        run: |
+          # Es crucial que 'your_docker_username' sea tu cuenta real de Docker Hub.
+          # Reemplaza 'your_docker_username' con el valor real de ${{ secrets.DOCKER_USERNAME }}
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f plugin/Dockerfile ./plugin
+
+      - name: Run Trivy vulnerability scan on Plugin Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest' # Escanea la imagen que acabas de construir
+          format: 'sarif'
+          output: 'trivy-plugin-report.sarif'
+          exit-code: '1' # Falla si se encuentran vulnerabilidades CRITICAL/HIGH
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Plugin Trivy SARIF report to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-plugin-report.sarif
+          category: "docker-plugin-scan"
 
       - name: Push Docker Plugin Image to Docker Hub
-        # Publica la imagen construida en Docker Hub
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/your-plugin-image-name:latest
-        # *** IMPORTANTE: Reemplaza 'your-plugin-image-name' con el nombre real de tu imagen de plugin. ***
+        # Empuja la imagen al registro de Docker Hub
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest

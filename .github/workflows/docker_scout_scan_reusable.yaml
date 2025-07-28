@@ -1,0 +1,106 @@
+# .github/workflows/docker_scout_scan_reusable.yaml
+name: Docker Scout Security Scan (Reusable)
+
+on:
+  workflow_call: # Este workflow puede ser llamado por otros
+    inputs:
+      image_to_scan: # Nombre de la imagen Docker a escanear
+        required: true
+        type: string
+        description: "The Docker image name to scan (e.g., 'my-app:latest')"
+      scan_type: # Tipo de escaneo (cves, quickview, sbom)
+        required: false
+        type: string
+        default: "cves"
+        description: "Type of Docker Scout scan ('cves', 'quickview', 'sbom')"
+      upload_sarif: # Booleano para controlar si se sube el informe SARIF
+        required: false
+        type: boolean
+        default: true
+        description: "Whether to upload SARIF results to GitHub Security tab"
+
+    outputs:
+      scan_status: # Estado del job de escaneo
+        description: "Status of the Docker Scout scan job"
+        value: ${{ jobs.scan.status }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Necesario para checkout
+      security-events: write # Necesario para subir SARIF a la pestaña de seguridad de GitHub
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx (includes Docker Scout)
+        # Esta acción es la forma más fiable de instalar Docker y Docker Scout CLI
+        uses: docker/setup-buildx-action@v3
+        # No necesitas 'driver-opts: image=moby/buildkit:latest' a menos que tengas un problema muy específico con la versión por defecto.
+        # Generalmente, la configuración por defecto es suficiente y más estable.
+
+      - name: Ensure Docker Scout is installed and available
+        # Verifica que 'docker scout' esté en el PATH después de setup-buildx-action
+        run: |
+          docker scout version || { echo "Error: Docker Scout is not installed or not in PATH."; exit 1; }
+          # Este paso verifica la instalación. Si falla, el workflow se detiene aquí.
+
+      - name: Run Docker Scout Scan: ${{ inputs.scan_type }}
+        id: scout_scan
+        run: |
+          REPORT_FILE="" # Inicializar para evitar errores si no se asigna
+          echo "Running docker scout ${{ inputs.scan_type }} for image: ${{ inputs.image_to_scan }}"
+          case "${{ inputs.scan_type }}" in
+            cves)
+              # No uses --exit-code aquí, ya que no es un flag válido para 'docker scout cves'.
+              # El '|| true' permite que el comando no falle el workflow si solo hay advertencias o no se encuentran CVEs.
+              docker scout cves ${{ inputs.image_to_scan }} --format sarif > "scout-report-cves.sarif" || true
+              REPORT_FILE="scout-report-cves.sarif"
+              ;;
+            quickview)
+              # quickview no genera SARIF. Genera JSON.
+              # Si necesitas que el quickview se suba a la pestaña de seguridad,
+              # necesitarías una herramienta para convertir el JSON a SARIF.
+              # Por ahora, solo se guarda el JSON y no se sube como SARIF.
+              docker scout quickview ${{ inputs.image_to_scan }} --format json > scout-quickview.json
+              echo "Docker Scout Quickview report generated as scout-quickview.json"
+              REPORT_FILE="scout-quickview.json" # Asigna para que se pueda subir como artefacto
+              ;;
+            sbom)
+              # sbom también genera JSON. Adapta si necesitas SARIF o manejarlo como quickview.
+              docker scout sbom ${{ inputs.image_to_scan }} --format json > scout-sbom.json
+              echo "Docker Scout SBOM report generated as scout-sbom.json"
+              REPORT_FILE="scout-sbom.json"
+              ;;
+            *)
+              echo "Unsupported scan_type: ${{ inputs.scan_type }}"
+              exit 1
+              ;;
+          esac
+          echo "SCANTYPE_REPORT_FILE=${REPORT_FILE}" >> $GITHUB_OUTPUT
+        # El '|| true' al final de las líneas 'docker scout' es importante para que el paso no marque como fallido
+        # si el comando sale con un código de error distinto de 0 pero aún así genera un reporte (ej. no se encontraron vulnerabilidades, pero el comando no devuelve 0)
+
+      - name: Upload Docker Scout SARIF results to GitHub Security tab
+        # Solo intenta subir si inputs.upload_sarif es true Y el archivo generado es SARIF (no quickview/sbom JSON)
+        if: ${{ success() && inputs.upload_sarif && endsWith(steps.scout_scan.outputs.SCANTYPE_REPORT_FILE, '.sarif') }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.scout_scan.outputs.SCANTYPE_REPORT_FILE }}
+          category: "docker-scout-scan-${{ inputs.scan_type }}"
+
+      - name: Upload Docker Scout report artifact
+        if: always() # Siempre sube el artefacto, incluso si hay fallos en el escaneo
+        uses: actions/upload-artifact@v4 # Actualizado a v4 para evitar advertencias de deprecación
+        with:
+          name: docker-scout-report-${{ inputs.scan_type }}
+          path: |
+            ${{ steps.scout_scan.outputs.SCANTYPE_REPORT_FILE }}
+            # Los siguientes paths se incluyen para el caso de quickview/sbom, aunque no se subirán como SARIF.
+            # 'actions/upload-artifact' v4 no falla si un path no existe.
+            scout-quickview.json
+            scout-sbom.json
+          # Opcionalmente, si solo quieres el archivo principal generado y evitar los otros si no existen:
+          # path: ${{ steps.scout_scan.outputs.SCANTYPE_REPORT_FILE }}
