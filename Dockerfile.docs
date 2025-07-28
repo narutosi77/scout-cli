@@ -1,0 +1,38 @@
+# Dockerfile.docs
+# Este Dockerfile está diseñado para construir una imagen que
+# se encargará de generar los archivos Markdown de documentación
+# utilizando el script 'generate_docs.py'.
+
+# Usamos una imagen base de Python ligera, ya que generate_docs.py
+# es un script de Python y no necesitamos compilar Go aquí.
+FROM python:3.9-slim
+
+# Establecemos el directorio de trabajo dentro del contenedor.
+# Todos los archivos copiados y comandos ejecutados serán relativos a este directorio.
+WORKDIR /app
+
+# Copiar el script de Python que generará la documentación Markdown.
+# Asumimos que 'generate_docs.py' está en la raíz de tu contexto de build (el repositorio).
+COPY generate_docs.py /app/generate_docs.py
+
+# Si tu script 'generate_docs.py' tiene dependencias de Python
+# (ej. si usa librerías como 'markdown', 'Jinja2', 'Click', etc.),
+# deberías tener un archivo 'requirements.txt' en la raíz de tu proyecto.
+# Si lo tienes, descomenta las siguientes dos líneas para instalar esas dependencias.
+# COPY requirements.txt /app/requirements.txt
+# RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Crear el directorio donde el script 'generate_docs.py' guardará
+# los archivos Markdown de documentación generados.
+# Este directorio debe coincidir con lo que tu script 'generate_docs.py' espera como salida.
+RUN mkdir -p /app/docs_output_path
+
+# Ejecutar el script de generación de documentación durante la fase de construcción de la imagen.
+# El resultado de esta ejecución (los archivos de documentación) se almacenará
+# dentro de la imagen en '/app/docs_output_path'.
+RUN python /app/generate_docs.py
+
+# Este Dockerfile no necesita un ENTRYPOINT o CMD final
+# porque su propósito principal es que la generación de docs ocurra durante el build,
+# y los archivos resultantes serán copiados fuera del contenedor por GitHub Actions.
+# No se espera que esta imagen sea "ejecutada" para servir un propósito continuo.

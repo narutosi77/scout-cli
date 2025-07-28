@@ -1,0 +1,46 @@
+name: Build CLI Binaries
+
+on:
+  workflow_call: # Este workflow está diseñado para ser llamado por otros workflows
+    # No necesita inputs si el tag se maneja en el workflow que lo llama.
+    # Si necesitara el tag para algo específico de la compilación, se podría añadir:
+    # inputs:
+    #   tag:
+    #     required: true
+    #     type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # Asegúrate de que esta versión coincida con la de tu proyecto Go
+
+      - name: Create dist directory for binaries
+        run: mkdir -p dist # Crea la carpeta 'dist' donde se guardarán los binarios
+
+      - name: Build for Linux (AMD64)
+        # Ajusta './cmd/scout' si tu main.go está en otra ubicación (ej. '.')
+        run: GOOS=linux GOARCH=amd64 go build -o dist/docker-scout-linux-amd64 ./cmd/scout
+    
+      - name: Build for Windows (AMD64)
+        run: GOOS=windows GOARCH=amd64 go build -o dist/docker-scout-windows-amd64.exe ./cmd/scout
+    
+      - name: Build for macOS (AMD64)
+        run: GOOS=darwin GOARCH=amd64 go build -o dist/docker-scout-darwin-amd64 ./cmd/scout
+
+      - name: Build for macOS (ARM64)
+        run: GOOS=darwin GOARCH=arm64 go build -o dist/docker-scout-darwin-arm64 ./cmd/scout
+
+      - name: Upload CLI Binaries as Artifact
+        # Sube los binarios compilados como un artefacto.
+        # Este artefacto será descargado por el workflow 'release.yaml'.
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries # Este nombre debe coincidir con el nombre de descarga en 'release.yaml'
+          path: dist/ # La carpeta 'dist/' que contiene todos los binarios compilados

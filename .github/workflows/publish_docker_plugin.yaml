@@ -1,0 +1,33 @@
+name: Publish Docker Plugin
+
+on:
+  release:
+    types: [published] # Se ejecuta cuando se publica un release en GitHub
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  build_and_publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Plugin Image
+        # Construye la imagen de TU plugin con el Dockerfile principal
+        # Etiqueta la imagen con tu username de Docker Hub y el nombre del plugin
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/your-plugin-image-name:latest -f Dockerfile .
+        # *** IMPORTANTE: Reemplaza 'your-plugin-image-name' con el nombre real de tu imagen de plugin. ***
+
+      - name: Push Docker Plugin Image to Docker Hub
+        # Publica la imagen construida en Docker Hub
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/your-plugin-image-name:latest
+        # *** IMPORTANTE: Reemplaza 'your-plugin-image-name' con el nombre real de tu imagen de plugin. ***

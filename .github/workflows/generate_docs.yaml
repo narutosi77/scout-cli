@@ -1,0 +1,45 @@
+name: Generate and Deploy Docs
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image for Docs Generation
+        # Construye la imagen usando el Dockerfile.docs (el específico para generar documentación)
+        run: docker build -t docs-generator-image:latest -f Dockerfile.docs .
+      
+      - name: Run Docs Generation in Container and Extract
+        # Ejecuta un contenedor temporal de la imagen de docs, copia los docs generados, y lo elimina.
+        # Se asume que generate_docs.py dentro del contenedor guarda en /app/docs_output_path
+        run: |
+          CONTAINER_ID=$(docker create docs-generator-image:latest)
+          docker cp $CONTAINER_ID:/app/docs_output_path ./generated_docs_from_container
+          docker rm $CONTAINER_ID
+        # Ahora los documentos generados están en la carpeta ./generated_docs_from_container del runner de GitHub Actions.
+
+      - name: Upload generated docs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-docs
+          path: generated_docs_from_container # Ruta donde se extrajeron los docs en el runner
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' # Solo despliega desde la rama principal
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./generated_docs_from_container # Misma ruta que para el artifact
+          # Si deseas una rama específica para GH Pages (ej. 'gh-pages'), descomenta la siguiente línea y configúrala en Settings > Pages:
+          # publish_branch: gh-pages

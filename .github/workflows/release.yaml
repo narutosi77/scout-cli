@@ -1,0 +1,77 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Se activa cuando se empuja un tag que empieza con 'v' (ej. v1.0.0)
+  workflow_dispatch: # Permite ejecutar manualmente el workflow desde la UI de GitHub
+  workflow_call: # Permite que este workflow sea llamado por otros workflows (útil para pruebas)
+    inputs:
+      tag:
+        required: true
+        type: string
+        description: "The tag to release (used when called by other workflows)"
+
+jobs:
+  # Job 1: Construir los binarios del CLI llamando al workflow reutilizable
+  build_cli_binaries:
+    # Llama al workflow 'release_cli_binaries.yaml' ubicado en la misma carpeta .github/workflows/
+    uses: ./.github/workflows/release_cli_binaries.yaml
+    # No es necesario pasar 'tag' si release_cli_binaries.yaml no lo usa directamente
+    # Si 'release_cli_binaries.yaml' necesitara secretos (ej. para pull de Docker Hub), se pasarían aquí con 'secrets: inherit'
+    # secrets: inherit 
+
+  # Job 2: Crear el Release en GitHub y adjuntar los binarios
+  create_release:
+    runs-on: ubuntu-latest
+    # Este job depende de que 'build_cli_binaries' se complete exitosamente
+    needs: build_cli_binaries 
+    permissions:
+      contents: write # Permiso necesario para crear el release y subir archivos
+
+    env:
+      # Define la referencia del release (el tag)
+      RELEASE_REF: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Necesario para manejar tags correctamente
+          ref: ${{ env.RELEASE_REF }} # Asegura que se checkout el código del tag correcto
+
+      - name: Download CLI Binaries Artifact
+        # Descarga el artefacto 'cli-binaries' que fue subido por el job 'build_cli_binaries'
+        uses: actions/download-artifact@v4 # Usa la versión v4
+        with:
+          name: cli-binaries # El nombre debe coincidir con el nombre del artefacto subido
+          path: dist/ # Descarga los binarios en la carpeta 'dist/' del runner
+
+      - name: Create GitHub Release
+        # Usa la acción softprops/action-gh-release para crear el release
+        uses: softprops/action-gh-release@v2 # Usa la versión v2 (más reciente)
+        with:
+          draft: true # Crea el release como borrador (puedes cambiar a 'false' para publicar directamente)
+          tag_name: ${{ env.RELEASE_REF }} # El tag del release
+          name: Release ${{ env.RELEASE_REF }} # El nombre visible del release
+          body: | # Descripción del release en Markdown
+            # Release ${{ env.RELEASE_REF }}
+            
+            This release includes the latest binaries for your CLI.
+            
+            ## Installation
+            
+            Download the appropriate binary for your OS and architecture from the assets below.
+            
+            ## Changes
+            
+            * Add your release notes here (e.g., from your CHANGELOG.md).
+          files: | # Lista de archivos a adjuntar al release
+            dist/docker-scout-linux-amd64
+            dist/docker-scout-windows-amd64.exe
+            dist/docker-scout-darwin-amd64
+            dist/docker-scout-darwin-arm64
+        # Si quisieras firmar los assets con Cosign (avanzado), la configuración iría aquí
+        # cosign_repo: "sigstore/cosign"
+        # cosign_target: "all"
+        # cosign_key: ${{ secrets.COSIGN_PRIVATE_KEY }}

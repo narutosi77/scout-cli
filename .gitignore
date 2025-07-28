@@ -1,0 +1,8 @@
+# .gitignore
+
+# Ignorar binarios de docker-scout si se descargan localmente para pruebas
+docker-scout
+docker-scout.exe
+
+# Ignorar archivos Markdown generados en docs/
+/docs/*.md
