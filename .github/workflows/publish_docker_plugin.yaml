@@ -15,8 +15,9 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
+      id-token: write
       security-events: write
 
     steps:
@@ -29,9 +30,8 @@ jobs:
           go-version: '1.22'
 
       - name: Build Plugin Binary (Linux AMD64)
-        run: |
-          cd plugin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o scout-plugin-binary main.go
+        # Corregida la ruta del archivo main.go
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./plugin/scout-plugin-binary ./plugin/main.go
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,9 +43,8 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Plugin Image
-        run: |
-          cd plugin
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f Dockerfile .
+        # Corregida la ruta del Dockerfile a plugin/Dockerfile
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f plugin/Dockerfile .
 
       - name: Run Trivy vulnerability scan on Plugin Image
         uses: aquasecurity/trivy-action@master
@@ -57,7 +56,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Plugin Trivy SARIF report to GitHub Security tab
-        if: always()
+        if: success() && fileExists('trivy-plugin-report.sarif')
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-plugin-report.sarif
