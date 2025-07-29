@@ -1,0 +1,55 @@
+name: Docker Scout CVE Scan
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Docker image to scan for CVEs'
+        required: true
+        type: string
+      severity:
+        description: 'Vulnerability severity filter'
+        default: 'CRITICAL,HIGH'
+        required: false
+        type: string
+      upload_sarif:
+        description: 'Upload SARIF report to GitHub Security tab'
+        default: true
+        required: false
+        type: boolean
+
+jobs:
+  cve-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Scout
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run Docker Scout CVE Scan
+        id: scan
+        run: |
+          echo "Scanning image ${{ inputs.image }} for CVEs..."
+          docker scout cves ${{ inputs.image }} \
+            --format sarif \
+            --output scout-cve-report.sarif \
+            --severity ${{ inputs.severity }} || true
+
+      - name: Upload SARIF to GitHub Security
+        if: ${{ inputs.upload_sarif == true && always() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scout-cve-report.sarif
+          category: 'docker-scout-cves'
+
+      - name: Upload CVE Report as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-scout-cve-report
+          path: scout-cve-report.sarif

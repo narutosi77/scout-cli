@@ -1,4 +1,3 @@
-# .github/workflows/publish_docker_plugin.yaml
 name: Publish Docker Plugin Image
 
 on:
@@ -6,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'plugin/**' # Solo ejecuta si hay cambios en la carpeta plugin
+      - 'plugin/**'
       - '.github/workflows/publish_docker_plugin.yaml'
   release:
     types: [published]
@@ -16,10 +15,9 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Para checkout
-      packages: write # Para push a GitHub Packages (si se usa)
-      id-token: write # Necesario para acciones que usen OIDC (ej. CodeQL)
-      security-events: write # Para subir resultados SARIF
+      contents: read
+      packages: write
+      security-events: write
 
     steps:
       - name: Checkout repository
@@ -31,8 +29,9 @@ jobs:
           go-version: '1.22'
 
       - name: Build Plugin Binary (Linux AMD64)
-        # Corregida la ruta de main.go
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./plugin/scout-plugin-binary ./plugin/main.go
+        run: |
+          cd plugin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o scout-plugin-binary main.go
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -44,13 +43,13 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build Docker Plugin Image
-        # Corregida la ruta del Dockerfile a plugin/Dockerfile
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f plugin/Dockerfile .
+        run: |
+          cd plugin
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f Dockerfile .
 
       - name: Run Trivy vulnerability scan on Plugin Image
         uses: aquasecurity/trivy-action@master
         with:
-          # Corregido 'image' a 'image-ref'
           image-ref: ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest
           format: 'sarif'
           output: 'trivy-plugin-report.sarif'
@@ -58,7 +57,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Plugin Trivy SARIF report to GitHub Security tab
-        if: success() && fileExists('trivy-plugin-report.sarif')
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-plugin-report.sarif

@@ -3,7 +3,7 @@ FROM python:3.9-slim-buster
 WORKDIR /app
 COPY generate_docs.py /app/generate_docs.py
 COPY mkdocs.yml /app/mkdocs.yml
-COPY docs/ /app/docs/ # Confirma esta ruta, tus archivos están en docs/comandos
+COPY docs/ /app/docs/ 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 RUN python /app/generate_docs.py

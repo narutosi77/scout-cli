@@ -6,11 +6,8 @@ import (
 	"strings"
 )
 
-// main es el punto de entrada de tu plugin Docker Scout.
-// Por ahora, solo simula el comportamiento de un plugin.
-// En un plugin real, aquí procesarías la entrada,
-// interactuarías con la API de Docker Scout si es necesario,
-// y generarías una salida.
+
+
 func main() {
 	// Docker Scout CLI espera que los plugins actúen como subcomandos.
 	// Por ejemplo, `docker scout mi-plugin <args>`.

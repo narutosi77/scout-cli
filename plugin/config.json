@@ -4,16 +4,22 @@
   "Vendor": "narutosi77",
   "Version": "1.0.0",
   "Interface": {
-    "Types": [
-      "docker.api.Plugin"
-    ],
+    "Types": ["docker.cli.PluginV1"],
     "Socket": "plugin.sock"
   },
+  "Entrypoint": ["/usr/local/bin/scout-plugin"],
+  "Workdir": "/app",
+  "User": {},
+  "Network": {
+    "Type": "bridge"
+  },
+  "Capabilities": null,
   "Mounts": [
     {
       "Name": "data",
-      "Source": "/var/lib/docker/plugins/my-scout-plugin",
+      "Source": "/var/lib/docker/plugins/scout-plugin",
       "Destination": "/data",
+      "Type": "bind",
       "Options": ["bind"]
     }
   ],
@@ -26,18 +32,7 @@
     }
   ],
   "Args": {
-    "Name": "scout",
+    "Name": "scout-plugin",
     "Description": "Comandos y funcionalidades para Docker Scout."
-  },
-  "Linux": {
-    "Capabilities": ["CAP_NET_BIND_SERVICE"],
-    "AllowAllDevices": false,
-    "Devices": [],
-    "Privileged": false
-  },
-  "User": {},
-  "InstallPolicy": {
-    "Name": "local",
-    "Description": "Instalación local del plugin."
   }
 }

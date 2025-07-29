@@ -1,16 +1,15 @@
-# .github/workflows/release.yaml
 name: Create GitHub Release
 
 on:
   push:
     tags:
-      - 'v*' # Se activa cuando se empuja un tag que comienza con 'v' (ej. v1.0.0, v2.0.1)
+      - 'v*'
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Necesario para crear un Release
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -20,21 +19,27 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Build and Package CLI Binaries
-        # Llama al workflow reutilizable para compilar y empaquetar los binarios
-        # Se pasa el tag para que el workflow de binarios lo use para nombrar.
-        uses: ./.github/workflows/release_cli_binaries.yaml # Ruta relativa dentro del mismo repo
-        id: build_binaries
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          tag: ${{ steps.get_version.outputs.VERSION }}
-          # Si release_cli_binaries necesita secretos, podrías pasar:
-          # secrets: inherit # Para pasar automáticamente todos los secretos del repo
+          go-version: '1.22'
 
-      - name: Download compiled binaries artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: cli-binaries-${{ steps.get_version.outputs.VERSION }} # Nombre del artefacto creado en release_cli_binaries.yaml
-          path: ./dist # Descargar en la carpeta 'dist' local
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Build CLI Binaries (from root)
+        run: |
+          # CLI Principal
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./dist/scout-cli-linux-amd64 .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./dist/scout-cli-windows-amd64.exe .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./dist/scout-cli-darwin-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./dist/scout-cli-linux-arm64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o ./dist/scout-cli-darwin-arm64 .
+
+      - name: Build Plugin Binary
+        run: |
+          cd plugin
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/scout-plugin-linux-amd64 main.go
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -42,13 +47,16 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
           name: Release ${{ steps.get_version.outputs.VERSION }}
           body: |
-            ## Novedades en ${{ steps.get_version.outputs.VERSION }}
+            ## Docker Scout CLI ${{ steps.get_version.outputs.VERSION }}
 
-            * Primera versión estable de Docker Scout CLI.
-            * (Añadir aquí tus notas de lanzamiento)
+            ### Binarios Disponibles
+            - Linux AMD64: `scout-cli-linux-amd64`
+            - Windows AMD64: `scout-cli-windows-amd64.exe`
+            - macOS AMD64: `scout-cli-darwin-amd64`
+            - Linux ARM64: `scout-cli-linux-arm64`
+            - macOS ARM64: `scout-cli-darwin-arm64`
+            - Plugin: `scout-plugin-linux-amd64`
 
-          draft: false # Si quieres que sea un borrador para revisión
-          prerelease: false # Si es una versión pre-lanzamiento (ej. beta)
-          files: ./dist/* # Adjuntar todos los archivos de la carpeta 'dist' al release
+          files: ./dist/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Token automático de GitHub Actions
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

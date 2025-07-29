@@ -1,0 +1,40 @@
+name: Docker Scout Quickview
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Docker image to analyze'
+        required: true
+        type: string
+      format:
+        description: 'Output format'
+        default: 'json'
+        required: false
+        type: string
+
+jobs:
+  quickview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Scout
+        uses: docker/setup-buildx-action@v3
+
+      - name: Run Docker Scout Quickview
+        run: |
+          echo "Running quickview analysis on image ${{ inputs.image }}..."
+          docker scout quickview ${{ inputs.image }} \
+            --format ${{ inputs.format }} \
+            --output scout-quickview.${{ inputs.format }}
+
+      - name: Upload Quickview Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-scout-quickview-report
+          path: scout-quickview.${{ inputs.format }}

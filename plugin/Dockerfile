@@ -1,18 +1,19 @@
-# C:\Users\cever\Documents\scout-cli\plugin\Dockerfile
-# Imagen base para tu plugin. alpine es ligera.
+# Dockerfile para el Plugin de Docker Scout
 FROM alpine:latest
 
-# Establece el directorio de trabajo dentro del contenedor
+# Instalar certificados CA
+RUN apk --no-cache add ca-certificates
+
 WORKDIR /app
 
-# Copia el binario compilado de tu plugin al contenedor
-# Asume que 'scout-plugin-binary' existe en la raíz de la carpeta 'plugin/'
-COPY ./scout-plugin-binary /usr/local/bin/scout-plugin
+# Copiar el binario compilado del plugin
+COPY scout-plugin-binary /usr/local/bin/scout-plugin
 
-# Copia el archivo de configuración del plugin
-# El nombre del archivo aquí es importante para que Docker lo detecte
+# Copiar el archivo de configuración del plugin
 COPY config.json /etc/docker/plugins/scout-plugin.json
 
-# Define el punto de entrada de tu plugin
-# Este comando se ejecutará cuando el contenedor del plugin se inicie
+# Hacer el binario ejecutable
+RUN chmod +x /usr/local/bin/scout-plugin
+
+# Punto de entrada del plugin
 ENTRYPOINT ["/usr/local/bin/scout-plugin"]

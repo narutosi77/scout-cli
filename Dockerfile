@@ -1,26 +1,31 @@
-# Dockerfile para generar documentación
-# Este Dockerfile es para crear una imagen que ejecuta generate_docs.py
-# y guarda los archivos Markdown generados.
-
-# Usamos una imagen base de Python ligera.
-FROM python:3.9-slim
+# Dockerfile para Docker Scout CLI (desde la raíz)
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-# Copiar el script de Python que generará la documentación Markdown
-# Asume que generate_docs.py no necesita un binario de docker-scout funcionando
-COPY generate_docs.py /app/generate_docs.py
+# Copiar archivos de Go
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Si generate_docs.py tiene dependencias de Python (ej. click, markdown), instálalas
-# COPY requirements.txt /app/requirements.txt
-# RUN pip install --no-cache-dir -r /app/requirements.txt
+# Copiar código fuente (desde la raíz)
+COPY main.go ./
 
-# Crear el directorio para almacenar los archivos Markdown generados.
-RUN mkdir -p /app/docs_output_path # Nombre más genérico para la salida
+# Compilar el CLI principal
+RUN CGO_ENABLED=0 GOOS=linux go build -o scout-cli .
 
-# Ejecuta el script de generación de documentación durante la construcción de la imagen.
-# Los archivos generados estarán en /app/docs_output_path dentro del contenedor.
-RUN python /app/generate_docs.py
+# Imagen final
+FROM alpine:latest
 
-# Este Dockerfile no necesita un ENTRYPOINT/CMD si su único propósito es generar docs durante el build.
-# Si la intención es que el contenedor sea útil para algo más después, se puede definir.
+# Instalar certificados CA
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+# Copiar el binario compilado
+COPY --from=builder /app/scout-cli .
+
+# Hacer ejecutable
+RUN chmod +x ./scout-cli
+
+# Punto de entrada
+ENTRYPOINT ["./scout-cli"]
