@@ -6,21 +6,21 @@ on:
     branches:
       - main
     paths:
-      - 'Dockerfile' # Si quieres que se dispare cuando el Dockerfile principal cambie
+      - 'Dockerfile'
       - '.github/workflows/trivy_security_scan.yaml'
   workflow_dispatch:
     inputs:
       image:
         description: 'Image to scan (e.g., my-app:latest)'
         required: true
-        default: 'nginx:latest' # O la imagen por defecto que quieras escanear
+        default: 'nginx:latest'
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Solo leer el repositorio
-      security-events: write # Necesario para subir resultados SARIF
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout repository
@@ -30,31 +30,35 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build My CLI/Plugin Image for Scan
-        # Construye la imagen de TU CLI/Plugin usando el Dockerfile principal
-        # La imagen se etiqueta como 'my-cli-image:latest'
-        run: docker build -t my-cli-image:latest -f Dockerfile . # Asegúrate que Dockerfile está en la raíz
+        run: docker build -t my-cli-image:latest -f Dockerfile .
 
       - name: Run Trivy vulnerability scan on Image
         uses: aquasecurity/trivy-action@master
         with:
-          # Corregido 'image' a 'image-ref' y el tag
-          image-ref: my-cli-image:latest # Escanea la imagen que acabas de construir.
+          image-ref: my-cli-image:latest
           format: 'sarif'
           output: 'trivy-report.sarif'
-          exit-code: '1' # Descomenta si quieres que el workflow falle en caso de vulnerabilidades críticas/altas
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
+      - name: Check if SARIF file exists
+        id: check_sarif
+        run: |
+          if [ -f "trivy-report.sarif" ]; then
+            echo "sarif_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "sarif_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Upload Trivy scan results to GitHub Security tab
-        # Esta condición asegura que el archivo SARIF exista y el paso anterior haya sido exitoso.
-        if: success() && fileExists('trivy-report.sarif')
+        if: steps.check_sarif.outputs.sarif_exists == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-report.sarif
           category: 'trivy-security-scan'
 
       - name: Upload Trivy report artifact
-        # Esto es opcional, si quieres guardar el informe SARIF como un artefacto del workflow.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-sarif-report

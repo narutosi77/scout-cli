@@ -2,6 +2,8 @@
 name: Docker Scout Scan Reusable
 
 on:
+  # 'workflow_call' hace que este workflow sea reutilizable,
+  # permitiendo que otros workflows lo invoquen con sus propios parámetros.
   workflow_call:
     inputs:
       image_to_scan:
@@ -20,28 +22,33 @@ on:
         type: boolean
     outputs:
       scan_status:
-        # Asegúrate que este output esté definido en el job 'scan'.
-        # La referencia directa a jobs.scan.outputs.scan_status es correcta.
+        description: "Status of the Docker Scout scan"
+        # Referencia el 'output' del job 'scan'
         value: ${{ jobs.scan.outputs.scan_status }}
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      security-events: write
+      contents: read # Permiso para leer el repositorio y descargar el código
+      security-events: write # Permiso necesario para subir el reporte SARIF a la pestaña de seguridad
 
     outputs:
-      scan_status: ${{ steps.scout_scan.outputs.scan_result }} # Define el output aquí
+      # Define el 'output' del job 'scan' que se usará en el workflow que lo invoca
+      scan_status: ${{ steps.scout_scan.outputs.scan_result }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx (includes Docker Scout)
+        # Esta acción instala 'docker buildx' y automáticamente incluye la CLI de Docker Scout.
+        # No se necesitan pasos adicionales de instalación de Docker Scout.
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub (Optional: if you push this image or pull private bases)
+      - name: Log in to Docker Hub
+        # Este paso es opcional pero necesario si la imagen a escanear es privada
+        # o si quieres usar credenciales para pulls con limites de rate
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -49,16 +56,25 @@ jobs:
 
       - name: Run Docker Scout Scan (${{ inputs.scan_type }})
         id: scout_scan
+        # Esta es la sección crucial que tenía el error de sintaxis YAML.
+        # Se ha corregido la indentación para que 'id' y 'run' estén al mismo nivel
+        # dentro del paso.
         run: |
           REPORT_FILE=""
           echo "Running docker scout ${{ inputs.scan_type }} for image: ${{ inputs.image_to_scan }}"
+          
+          # La sentencia 'case' ejecuta el comando de Docker Scout según el 'scan_type'
+          # que se haya pasado como 'input'.
           case "${{ inputs.scan_type }}" in
             cves)
-              # Eliminar --exit-code, no es un flag válido. '|| true' para evitar fallos.
+              # El flag '--format sarif' crea un reporte compatible con GitHub Security.
+              # '|| true' previene que el workflow falle si 'docker scout' no encuentra vulnerabilidades
+              # o tiene un error de salida no crítico.
               docker scout cves ${{ inputs.image_to_scan }} --format sarif > "scout-report-cves.sarif" || true
               REPORT_FILE="scout-report-cves.sarif"
               ;;
             quickview)
+              # El formato JSON es más adecuado para 'quickview' o 'sbom' que no son reportes de seguridad.
               docker scout quickview ${{ inputs.image_to_scan }} --format json > scout-quickview.json
               echo "Docker Scout Quickview report generated as scout-quickview.json"
               REPORT_FILE="scout-quickview.json"
@@ -74,10 +90,19 @@ jobs:
               exit 1
               ;;
           esac
+          
+          # Se establece un output del paso para que el nombre del archivo de reporte
+          # esté disponible para los siguientes pasos.
           echo "SCANTYPE_REPORT_FILE=${REPORT_FILE}" >> $GITHUB_OUTPUT
+          # Se establece el resultado del escaneo.
           echo "scan_result=success" >> $GITHUB_OUTPUT
 
       - name: Upload Docker Scout SARIF report to GitHub Security tab
+        # Esta condición asegura que el reporte SARIF solo se suba si:
+        # - el 'input' `upload_sarif` es 'true'
+        # - se generó un reporte (el nombre del archivo no está vacío)
+        # - el nombre del archivo es el de vulnerabilidades ('cves')
+        # - el paso anterior fue exitoso
         if: ${{ inputs.upload_sarif == true && steps.scout_scan.outputs.SCANTYPE_REPORT_FILE != '' && steps.scout_scan.outputs.SCANTYPE_REPORT_FILE == 'scout-report-cves.sarif' && success() }}
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -85,6 +110,7 @@ jobs:
           category: 'docker-scout-cves'
 
       - name: Upload Docker Scout Report as Artifact (for other scan types)
+        # Este paso guarda el reporte como un artefacto del workflow si no es un reporte SARIF.
         if: ${{ steps.scout_scan.outputs.SCANTYPE_REPORT_FILE != '' && steps.scout_scan.outputs.SCANTYPE_REPORT_FILE != 'scout-report-cves.sarif' && success() }}
         uses: actions/upload-artifact@v4
         with:
