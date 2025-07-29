@@ -1,6 +1,6 @@
 {
   "Description": "Un plugin de Docker CLI para funcionalidades de Docker Scout.",
-  "Documentation": "https://narutosi77.github.io/scout-cli/", # Tu URL de docs
+  "Documentation": "https://narutosi77.github.io/scout-cli/",
   "Vendor": "narutosi77",
   "Version": "1.0.0",
   "Interface": {
@@ -26,8 +26,8 @@
     }
   ],
   "Args": {
-    "Name": "",
-    "Description": ""
+    "Name": "scout",
+    "Description": "Comandos y funcionalidades para Docker Scout."
   },
   "Linux": {
     "Capabilities": ["CAP_NET_BIND_SERVICE"],
@@ -35,5 +35,9 @@
     "Devices": [],
     "Privileged": false
   },
-  "User": {}
+  "User": {},
+  "InstallPolicy": {
+    "Name": "local",
+    "Description": "Instalación local del plugin."
+  }
 }

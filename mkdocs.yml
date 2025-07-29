@@ -1,9 +1,9 @@
 # mkdocs.yml
 site_name: Docker Scout CLI Documentation
-site_url: https://narutosi77.github.io/scout-cli/ # Asegúrate de que esta URL sea correcta para tus GitHub Pages
+site_url: https://narutosi77.github.io/scout-cli/
 repo_url: https://github.com/narutosi77/scout-cli
 repo_name: narutosi77/scout-cli
-edit_uri: blob/main/docs/ # Permite editar los archivos directamente desde GitHub Pages
+edit_uri: blob/main/docs/ # Este apunta a la carpeta donde están tus .md
 
 theme:
   name: material
@@ -16,14 +16,12 @@ theme:
     - content.tabs.link
     - content.code.annotation
     - content.code.copy
-  language: es # Idioma de la interfaz del tema
+  language: es
   palette:
-    # Modo claro
     - scheme: default
       toggle:
         icon: material/brightness-7
         name: Cambiar a modo oscuro
-    # Modo oscuro
     - scheme: slate
       toggle:
         icon: material/brightness-4
@@ -37,4 +35,4 @@ nav:
     - Análisis Rápido: comandos/scout_quickview.md
 
 plugins:
-  - search # Habilita la búsqueda
+  - search

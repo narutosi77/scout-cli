@@ -5,13 +5,20 @@ on:
   push:
     branches:
       - main # Desplegar cuando se haga push a la rama principal
+    paths: # Solo ejecutar si cambian archivos relevantes a la documentación
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'Dockerfile.docs'
+      - 'generate_docs.py'
+      - 'requirements.txt' # Asegúrate de tener este archivo con las dependencias
+      - '.github/workflows/generate_docs.yaml'
   workflow_dispatch: # Permite ejecutar el workflow manualmente desde la UI de GitHub
 
 jobs:
   build-and-deploy-docs:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Necesario para que actions/checkout y peaceiris/actions-gh-pages escriban en el repo
+      contents: write # Necesario para actions/checkout y para actions/upload-pages-artifact
       pages: write # Permiso necesario para desplegar en GitHub Pages
       id-token: write # Permiso para autenticación OIDC, requerido por actions/deploy-pages
 
@@ -20,27 +27,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker Image for Docs Generator
+        # Corregido para usar Dockerfile.docs
         run: docker build -t scout-docs-generator -f Dockerfile.docs .
-        # Asegúrate de que Dockerfile.docs está en la raíz del repositorio
 
-      - name: Create temporary container to extract docs
-        run: docker create --name docs_container scout-docs-generator
-
-      - name: Copy generated docs from container
-        # MkDocs genera el sitio en la carpeta 'site' dentro del WORKDIR del contenedor
-        run: docker cp docs_container:/app/site/. docs_output # Copia los docs a una carpeta local 'docs_output'
-
-      - name: Remove temporary container
-        run: docker rm docs_container
+      - name: Create temporary container and copy generated docs
+        run: |
+          CONTAINER_ID=$(docker create scout-docs-generator)
+          docker cp $CONTAINER_ID:/app/site/. ./site_output # MkDocs genera en 'site' por defecto
+          docker rm $CONTAINER_ID
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5 # Configura el entorno de GitHub Pages
+        uses: actions/configure-pages@v5
 
       - name: Upload artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v3 # Sube los archivos para el despliegue de Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs_output' # La carpeta que contiene los archivos estáticos HTML
+          name: github-pages # Este nombre es requerido por actions/deploy-pages
+          path: './site_output'
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4 # Despliega los archivos en GitHub Pages
+        uses: actions/deploy-pages@v4

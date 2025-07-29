@@ -1,36 +1,9 @@
 # Dockerfile.docs
-# Este Dockerfile está diseñado para construir una imagen que
-# se encargará de generar los archivos Markdown de documentación
-# utilizando el script 'generate_docs.py', y luego MkDocs.
-
-# Usamos una imagen base de Python ligera
 FROM python:3.9-slim-buster
-
-# Establecemos el directorio de trabajo dentro del contenedor.
-# Todos los archivos copiados y comandos ejecutados serán relativos a este directorio.
 WORKDIR /app
-
-# Copiar el script de Python que generará la documentación Markdown.
-# Asumimos que 'generate_docs.py' está en la raíz de tu contexto de build (el repositorio).
 COPY generate_docs.py /app/generate_docs.py
-
-# Copiar el archivo de configuración de MkDocs y la carpeta de documentación Markdown.
-# Estos son necesarios para que 'generate_docs.py' (si llama a MkDocs) o MkDocs directamente funcionen.
 COPY mkdocs.yml /app/mkdocs.yml
-COPY docs/ /app/docs/ 
-
-# Si tu script 'generate_docs.py' o MkDocs tienen dependencias de Python
-# (ej. 'mkdocs', 'mkdocs-material', etc.), deberías tener un archivo 'requirements.txt'.
-# Si lo tienes, descomenta las siguientes dos líneas para instalar esas dependencias.
+COPY docs/ /app/docs/ # Confirma esta ruta, tus archivos están en docs/comandos
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# Ejecutar el script de generación de documentación.
-# Este script DEBE ejecutar 'mkdocs build' y asegurarse de que la salida
-# (el sitio HTML estático) se genere en la carpeta './site' dentro del WORKDIR (/app/site).
-# Si tu script genera en otra carpeta, ajusta el 'docker cp' en generate_docs.yaml.
 RUN python /app/generate_docs.py
-
-# Este Dockerfile no necesita un ENTRYPOINT o CMD final
-# porque su propósito principal es que la generación de docs ocurra durante el build,
-# y los archivos resultantes serán copiados fuera del contenedor por GitHub Actions.

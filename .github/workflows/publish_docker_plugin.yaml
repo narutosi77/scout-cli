@@ -1,70 +1,68 @@
-# .github/workflows/trivy_security_scan.yaml
-name: Trivy Security Scan (Public Image Test)
+# .github/workflows/publish_docker_plugin.yaml
+name: Publish Docker Plugin Image
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch: # Permite ejecución manual
+    paths:
+      - 'plugin/**' # Solo ejecuta si hay cambios en la carpeta plugin
+      - '.github/workflows/publish_docker_plugin.yaml'
+  release:
+    types: [published]
+  workflow_dispatch:
 
 jobs:
-  scan:
+  build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Necesario para checkout
-      security-events: write # Necesario para subir resultados SARIF a la pestaña de seguridad de GitHub
+      contents: write # Para checkout
+      packages: write # Para push a GitHub Packages (si se usa)
+      id-token: write # Necesario para acciones que usen OIDC (ej. CodeQL)
+      security-events: write # Para subir resultados SARIF
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx (includes Docker Scout)
-        # Este paso instalará Docker y Docker Scout CLI, eliminando la necesidad de curl manual.
+      - name: Set up Go for plugin binary
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Plugin Binary (Linux AMD64)
+        # Corregida la ruta de main.go
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./plugin/scout-plugin-binary ./plugin/main.go
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
-        # Este paso es opcional si solo escaneas imágenes públicas o no necesitas pull/push.
-        # Lo mantengo por si lo necesitas para otras fases de tu proyecto.
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build My CLI/Plugin Image for Scan
-        # Asume que tu Dockerfile principal está en la raíz del repositorio.
-        # Si tu Dockerfile está en 'plugin/Dockerfile', ajusta el comando a:
-        # run: docker build -t my-cli-image:latest -f plugin/Dockerfile plugin/
-        # Para tu caso, donde parece haber un Dockerfile en la raíz, se mantiene el .
-        run: docker build -t my-cli-image:latest -f Dockerfile .
+      - name: Build Docker Plugin Image
+        # Corregida la ruta del Dockerfile a plugin/Dockerfile
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest -f plugin/Dockerfile .
 
-      - name: Run Trivy vulnerability scan on Public Image
-        id: trivy_scan
+      - name: Run Trivy vulnerability scan on Plugin Image
         uses: aquasecurity/trivy-action@master
         with:
-          # 'image-ref' es el parámetro correcto para la acción trivy-action.
-          image-ref: 'my-cli-image:latest' # Escanea la imagen que acabas de construir.
+          # Corregido 'image' a 'image-ref'
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest
           format: 'sarif'
-          output: 'trivy-report.sarif'
-          # exit-code: '1' # Descomenta si quieres que el workflow falle en caso de vulnerabilidades críticas/altas
-          ignore-unfixed: true
+          output: 'trivy-plugin-report.sarif'
           severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
 
-      - name: Upload Trivy scan results to GitHub Security tab
-        # Esta condición asegura que el archivo SARIF exista y el paso anterior haya sido exitoso.
-        # 'success()' garantiza que no se intente subir un archivo inexistente.
-        if: ${{ success() }}
+      - name: Upload Plugin Trivy SARIF report to GitHub Security tab
+        if: success() && fileExists('trivy-plugin-report.sarif')
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-report.sarif'
-          category: 'trivy-security-scan'
+          sarif_file: trivy-plugin-report.sarif
+          category: 'docker-plugin-scan'
 
-      - name: Upload Trivy report artifact
-        # Este paso es útil para depuración, ya que guarda el reporte SARIF como un artefacto del workflow.
-        if: always() # Siempre sube el artefacto, incluso si el escaneo falla.
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report
-          path: trivy-report.sarif
+      - name: Push Docker Plugin Image to Docker Hub
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/scout-plugin:latest
