@@ -1,31 +1,35 @@
-# Dockerfile para Docker Scout CLI (desde la raíz)
+# ---- Etapa 1: El Constructor (Builder) ----
+# Usamos una imagen oficial de Go para construir la aplicación.
 FROM golang:1.22-alpine AS builder
 
+# Establecemos el directorio de trabajo dentro del contenedor.
 WORKDIR /app
 
-# Copiar archivos de Go
+# Copiamos los archivos de módulos de Go primero para aprovechar la caché de Docker.
 COPY go.mod go.sum ./
+
+# Descargamos las dependencias. Si no hay, este comando no hace nada pero no falla.
+# Esto es más robusto que el vendoring para un proyecto simple.
 RUN go mod download
 
-# Copiar código fuente (desde la raíz)
-COPY main.go ./
+# Ahora, copiamos TODO el resto del código fuente y otros archivos.
+# El punto '.' significa "todo en el directorio actual del proyecto".
+COPY . .
 
-# Compilar el CLI principal
-RUN CGO_ENABLED=0 GOOS=linux go build -o scout-cli .
+# Compilamos la aplicación de Go, creando un binario estático para Linux.
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/scout-cli .
 
-# Imagen final
+
+# ---- Etapa 2: La Imagen Final (Mucho más pequeña) ----
+# Empezamos desde una imagen base mínima.
 FROM alpine:latest
 
-# Instalar certificados CA
+# (Buena práctica) Instalar certificados para conexiones HTTPS.
 RUN apk --no-cache add ca-certificates
 
-WORKDIR /root/
+# Copiamos ÚNICAMENTE el programa ya compilado desde la etapa del constructor.
+# Lo ponemos en un directorio estándar para binarios.
+COPY --from=builder /app/scout-cli /usr/local/bin/scout-cli
 
-# Copiar el binario compilado
-COPY --from=builder /app/scout-cli .
-
-# Hacer ejecutable
-RUN chmod +x ./scout-cli
-
-# Punto de entrada
-ENTRYPOINT ["./scout-cli"]
+# Establecemos el comando que se ejecutará cuando el contenedor se inicie.
+ENTRYPOINT ["/usr/local/bin/scout-cli"]
