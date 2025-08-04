@@ -102,8 +102,8 @@ func handleCompare(args []string) {
 		os.Exit(1)
 	}
 	image1, image2 := args[0], args[1]
-	// Ejecutamos el comando real de docker scout
-	executeCommand("docker", "scout", "compare", image1, image2)
+	// CORRECCIÓN: El segundo argumento se pasa con la bandera --to
+	executeCommand("docker", "scout", "compare", image1, "--to", image2)
 }
 
 func handleQuickview(args []string) {
